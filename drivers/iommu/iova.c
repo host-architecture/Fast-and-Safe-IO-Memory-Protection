@@ -11,11 +11,26 @@
 #include <linux/smp.h>
 #include <linux/bitops.h>
 #include <linux/cpu.h>
+#include <linux/timekeeping.h>
+#include <asm/atomic.h>
 
 /* The anchor node sits above the top of the usable address space */
 #define IOVA_ANCHOR	~0UL
 
 #define IOVA_RANGE_CACHE_MAX_SIZE 6	/* log of max cached IOVA range size (in pages) */
+
+//TODO: Add iova log function
+int add_iova_log(unsigned long pfn, int source, bool ins, struct iova_domain *iovad) {
+	//u64 timestamp = ktime_get_ns();
+	trace_printk("IL:%lu,%d,%d,%p\n",
+            pfn,
+            source,
+            ins,
+	    iovad
+            );
+	return 0;
+}
+
 
 static bool iova_rcache_insert(struct iova_domain *iovad,
 			       unsigned long pfn,
@@ -25,6 +40,7 @@ static unsigned long iova_rcache_get(struct iova_domain *iovad,
 				     unsigned long limit_pfn);
 static void free_cpu_cached_iovas(unsigned int cpu, struct iova_domain *iovad);
 static void free_iova_rcaches(struct iova_domain *iovad);
+
 
 unsigned long iova_rcache_range(void)
 {
@@ -452,8 +468,10 @@ alloc_iova_fast(struct iova_domain *iovad, unsigned long size,
 		size = roundup_pow_of_two(size);
 
 	iova_pfn = iova_rcache_get(iovad, size, limit_pfn + 1);
-	if (iova_pfn)
+	if (iova_pfn) {
+		add_iova_log(iova_pfn, 2, false, iovad);
 		return iova_pfn;
+	}
 
 retry:
 	new_iova = alloc_iova(iovad, size, limit_pfn, true);
@@ -470,7 +488,7 @@ retry:
 		free_global_cached_iovas(iovad);
 		goto retry;
 	}
-
+	add_iova_log(new_iova->pfn_lo, 1, false, iovad);
 	return new_iova->pfn_lo;
 }
 EXPORT_SYMBOL_GPL(alloc_iova_fast);
@@ -486,10 +504,13 @@ EXPORT_SYMBOL_GPL(alloc_iova_fast);
 void
 free_iova_fast(struct iova_domain *iovad, unsigned long pfn, unsigned long size)
 {
-	if (iova_rcache_insert(iovad, pfn, size))
+	if (iova_rcache_insert(iovad, pfn, size)) {
+		add_iova_log(pfn, 2, true, iovad);
 		return;
+	}
 
 	free_iova(iovad, pfn);
+	add_iova_log(pfn, 1, true, iovad);
 }
 EXPORT_SYMBOL_GPL(free_iova_fast);
 
