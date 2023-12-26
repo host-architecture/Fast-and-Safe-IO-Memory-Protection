@@ -1470,7 +1470,7 @@ void qi_flush_iotlb(struct intel_iommu *iommu, u16 did, u64 addr,
 	u8 dw = 0, dr = 0;
 
 	struct qi_desc desc;
-	int ih = 0;
+	int ih = 1;
 
 	if (cap_write_drain(iommu->cap))
 		dw = 1;
