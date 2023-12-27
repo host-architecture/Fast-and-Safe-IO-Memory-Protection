@@ -1496,6 +1496,8 @@ static void iommu_flush_iotlb_psi(struct intel_iommu *iommu,
 {
 	unsigned int aligned_pages = __roundup_pow_of_two(pages);
 	unsigned int mask = ilog2(aligned_pages);
+	//pfn = 1046000;
+	//pages = 2576;
 	uint64_t addr = (uint64_t)pfn << VTD_PAGE_SHIFT;
 	u16 did = domain_id_iommu(domain, iommu);
 
@@ -4342,6 +4344,28 @@ static size_t intel_iommu_unmap_pages(struct iommu_domain *domain,
 	return intel_iommu_unmap(domain, iova, size, gather);
 }
 
+static void intel_iommu_tlb_sync_batched(struct iommu_domain *domain,
+				 struct iommu_iotlb_gather *gather, dma_addr_t min_dma, size_t inv_size)
+{
+	struct dmar_domain *dmar_domain = to_dmar_domain(domain);
+	unsigned long iova_pfn = IOVA_PFN(gather->start);
+	size_t size = gather->end - gather->start;
+	struct iommu_domain_info *info;
+	unsigned long start_pfn;
+	unsigned long nrpages;
+	unsigned long i;
+
+	nrpages = aligned_nrpages(gather->start, size);
+	start_pfn = mm_to_dma_pfn(iova_pfn);
+
+	xa_for_each(&dmar_domain->iommu_array, i, info)
+		iommu_flush_iotlb_psi(info->iommu, dmar_domain,
+				      min_dma, inv_size,
+				      1, 0);
+
+	put_pages_list(&gather->freelist);
+}
+
 static void intel_iommu_tlb_sync(struct iommu_domain *domain,
 				 struct iommu_iotlb_gather *gather)
 {
@@ -4773,6 +4797,7 @@ const struct iommu_ops intel_iommu_ops = {
 		.iotlb_sync_map		= intel_iommu_iotlb_sync_map,
 		.flush_iotlb_all        = intel_flush_iotlb_all,
 		.iotlb_sync		= intel_iommu_tlb_sync,
+		.iotlb_sync_batched		= intel_iommu_tlb_sync_batched,
 		.iova_to_phys		= intel_iommu_iova_to_phys,
 		.free			= intel_iommu_domain_free,
 		.enforce_cache_coherency = intel_iommu_enforce_cache_coherency,

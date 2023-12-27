@@ -223,18 +223,18 @@ struct nvme_queue {
  * The sg pointer contains the list of PRP/SGL chunk allocations in addition
  * to the actual struct scatterlist.
  */
-struct nvme_iod {
-	struct nvme_request req;
-	struct nvme_command cmd;
-	struct nvme_queue *nvmeq;
-	bool use_sgl;
-	int aborted;
-	int npages;		/* In the PRP list. 0 means small pool in use */
-	dma_addr_t first_dma;
-	unsigned int dma_len;	/* length of single DMA segment mapping */
-	dma_addr_t meta_dma;
-	struct sg_table sgt;
-};
+// struct nvme_iod {
+// 	struct nvme_request req;
+// 	struct nvme_command cmd;
+// 	struct nvme_queue *nvmeq;
+// 	bool use_sgl;
+// 	int aborted;
+// 	int npages;		/* In the PRP list. 0 means small pool in use */
+// 	dma_addr_t first_dma;
+// 	unsigned int dma_len;	/* length of single DMA segment mapping */
+// 	dma_addr_t meta_dma;
+// 	struct sg_table sgt;
+// };
 
 static inline unsigned int nvme_dbbuf_size(struct nvme_dev *dev)
 {
@@ -575,13 +575,14 @@ static void nvme_free_sgls(struct nvme_dev *dev, struct request *req)
 	}
 }
 
-static void nvme_unmap_data(struct nvme_dev *dev, struct request *req)
+static void nvme_unmap_data(struct nvme_dev *dev, struct request *req, dma_addr_t min_dma, size_t inv_size)
 {
 	struct nvme_iod *iod = blk_mq_rq_to_pdu(req);
 
 	if (iod->dma_len) {
-		dma_unmap_page(dev->dev, iod->first_dma, iod->dma_len,
-			       rq_dma_dir(req));
+		/*dma_unmap_page(dev->dev, iod->first_dma, iod->dma_len,
+			       rq_dma_dir(req));*/
+		dma_unmap_page_attrs_batched(dev->dev, iod->first_dma, iod->dma_len, rq_dma_dir(req), 0, min_dma, inv_size);
 		return;
 	}
 
@@ -921,7 +922,7 @@ static blk_status_t nvme_prep_rq(struct nvme_dev *dev, struct request *req)
 	blk_mq_start_request(req);
 	return BLK_STS_OK;
 out_unmap_data:
-	nvme_unmap_data(dev, req);
+	nvme_unmap_data(dev, req, 0, 0);
 out_free_cmd:
 	nvme_cleanup_cmd(req);
 	return ret;
@@ -1017,6 +1018,18 @@ static void nvme_queue_rqs(struct request **rqlist)
 	*rqlist = requeue_list;
 }
 
+static __always_inline void nvme_pci_unmap_rq_batched(struct request *req, dma_addr_t min_dma, size_t inv_size)
+{
+	struct nvme_iod *iod = blk_mq_rq_to_pdu(req);
+	struct nvme_dev *dev = iod->nvmeq->dev;
+
+	if (blk_integrity_rq(req))
+		dma_unmap_page(dev->dev, iod->meta_dma,
+			       rq_integrity_vec(req)->bv_len, rq_data_dir(req));
+	if (blk_rq_nr_phys_segments(req))
+		nvme_unmap_data(dev, req, min_dma, inv_size);
+}
+
 static __always_inline void nvme_pci_unmap_rq(struct request *req)
 {
 	struct nvme_iod *iod = blk_mq_rq_to_pdu(req);
@@ -1026,7 +1039,7 @@ static __always_inline void nvme_pci_unmap_rq(struct request *req)
 		dma_unmap_page(dev->dev, iod->meta_dma,
 			       rq_integrity_vec(req)->bv_len, rq_data_dir(req));
 	if (blk_rq_nr_phys_segments(req))
-		nvme_unmap_data(dev, req);
+		nvme_unmap_data(dev, req, 0, 0);
 }
 
 static void nvme_pci_complete_rq(struct request *req)
@@ -1037,7 +1050,8 @@ static void nvme_pci_complete_rq(struct request *req)
 
 static void nvme_pci_complete_batch(struct io_comp_batch *iob)
 {
-	nvme_complete_batch(iob, nvme_pci_unmap_rq);
+	//nvme_complete_batch(iob, nvme_pci_unmap_rq);
+	nvme_complete_batch_batched(iob, nvme_pci_unmap_rq_batched);
 }
 
 /* We read the CQE phase first to check if the rest of the entry is valid */

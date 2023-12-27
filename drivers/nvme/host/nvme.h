@@ -694,6 +694,58 @@ static inline bool nvme_is_aen_req(u16 qid, __u16 command_id)
 void nvme_complete_rq(struct request *req);
 void nvme_complete_batch_req(struct request *req);
 
+struct nvme_iod {
+	struct nvme_request req;
+	struct nvme_command cmd;
+	struct nvme_queue *nvmeq;
+	bool use_sgl;
+	int aborted;
+	int npages;		/* In the PRP list. 0 means small pool in use */
+	dma_addr_t first_dma;
+	unsigned int dma_len;	/* length of single DMA segment mapping */
+	dma_addr_t meta_dma;
+	struct sg_table sgt;
+};
+
+static __always_inline void nvme_complete_batch_batched(struct io_comp_batch *iob,
+						void (*fn)(struct request *rq, dma_addr_t min_dma_addr, size_t invalidate_size))
+{
+	struct request *req;
+	struct nvme_iod *iod;
+	dma_addr_t min_dma = 1048576;
+	dma_addr_t max_dma = 0;
+	unsigned int max_length = 0;
+	unsigned int curr_length = 0; // could also do it based off of rq_next being null
+	unsigned int inv_size;
+
+	//calculate the min and max dma pages
+	rq_list_for_each(&iob->req_list, req) {
+		iod = blk_mq_rq_to_pdu(req);
+		if (iod->first_dma < min_dma) {
+			min_dma = iod->first_dma;
+		}
+		if (iod->first_dma > max_dma) {
+			max_dma = iod->first_dma;
+		}
+		max_length++;
+	}
+
+	// size of invalidation is number of pages between max and min, including the min page
+	inv_size = (max_dma - min_dma) + 1;
+
+	rq_list_for_each(&iob->req_list, req) {
+		curr_length++;
+		if (curr_length == max_length) {
+			fn(req, min_dma, inv_size);
+		} else {
+			fn(req, min_dma, 0);
+		}
+
+		nvme_complete_batch_req(req);
+	}
+	blk_mq_end_request_batch(iob);
+}
+
 static __always_inline void nvme_complete_batch(struct io_comp_batch *iob,
 						void (*fn)(struct request *rq))
 {

@@ -304,6 +304,8 @@ struct iommu_domain_ops {
 			       size_t size);
 	void (*iotlb_sync)(struct iommu_domain *domain,
 			   struct iommu_iotlb_gather *iotlb_gather);
+	void (*iotlb_sync_batched)(struct iommu_domain *domain,
+			   struct iommu_iotlb_gather *iotlb_gather, dma_addr_t min_dma, size_t inv_size);
 
 	phys_addr_t (*iova_to_phys)(struct iommu_domain *domain,
 				    dma_addr_t iova);
@@ -513,6 +515,15 @@ static inline void iommu_iotlb_sync(struct iommu_domain *domain,
 {
 	if (domain->ops->iotlb_sync)
 		domain->ops->iotlb_sync(domain, iotlb_gather);
+
+	iommu_iotlb_gather_init(iotlb_gather);
+}
+
+static inline void iommu_iotlb_sync_batched(struct iommu_domain *domain,
+				  struct iommu_iotlb_gather *iotlb_gather, dma_addr_t min_dma, size_t inv_size)
+{
+	if (domain->ops->iotlb_sync)
+		domain->ops->iotlb_sync_batched(domain, iotlb_gather, min_dma, inv_size);
 
 	iommu_iotlb_gather_init(iotlb_gather);
 }
