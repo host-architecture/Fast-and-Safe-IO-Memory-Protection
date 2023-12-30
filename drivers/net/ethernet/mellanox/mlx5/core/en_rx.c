@@ -692,6 +692,8 @@ static int mlx5e_alloc_rx_mpwqe(struct mlx5e_rq *rq, u16 ix)
 		if (unlikely(err))
 			goto err_unmap;
 		umr_wqe->inline_mtts[i].ptag = cpu_to_be64(dma_info->addr | MLX5_EN_WR);
+		if (smp_processor_id() == 4) 
+			trace_printk("core: %d, ix: %u, %llu\n", smp_processor_id(), ix, dma_info->addr);
 	}
 
 	bitmap_zero(wi->xdp_xmit_bitmap, MLX5_MPWRQ_PAGES_PER_WQE);
