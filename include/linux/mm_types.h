@@ -223,6 +223,13 @@ struct page {
 					   not kmapped, ie. highmem) */
 #endif /* WANT_PAGE_VIRTUAL */
 
+	/* For Cached DMA pages */
+	u64 iova;
+	union {
+		struct device	*device;
+		struct page	*cache_next;
+	};
+
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
 	int _last_cpupid;
 #endif

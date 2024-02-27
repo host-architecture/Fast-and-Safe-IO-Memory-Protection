@@ -2976,6 +2976,7 @@ static void klist_children_put(struct klist_node *n)
 void device_initialize(struct device *dev)
 {
 	dev->kobj.kset = devices_kset;
+	dev->iova_mag = NULL;
 	kobject_init(&dev->kobj, &device_ktype);
 	INIT_LIST_HEAD(&dev->dma_pools);
 	mutex_init(&dev->mutex);

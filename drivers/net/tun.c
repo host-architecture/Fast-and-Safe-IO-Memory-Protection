@@ -1665,7 +1665,7 @@ static struct sk_buff *tun_build_skb(struct tun_struct *tun,
 	rcu_read_unlock();
 
 	alloc_frag->offset = ALIGN((u64)alloc_frag->offset, SMP_CACHE_BYTES);
-	if (unlikely(!skb_page_frag_refill(buflen, alloc_frag, GFP_KERNEL)))
+	if (unlikely(!skb_page_frag_refill(tun->dev->dev.parent, buflen, alloc_frag, GFP_KERNEL)))
 		return ERR_PTR(-ENOMEM);
 
 	buf = (char *)page_address(alloc_frag->page) + alloc_frag->offset;

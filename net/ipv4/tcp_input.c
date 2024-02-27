@@ -4949,6 +4949,9 @@ static int __must_check tcp_queue_rcv(struct sock *sk, struct sk_buff *skb,
 int tcp_send_rcvq(struct sock *sk, struct msghdr *msg, size_t size)
 {
 	struct sk_buff *skb;
+	struct dst_entry *dst = sk_dst_get(sk);
+	struct net_device *netdev = (dst) ? dst->dev : NULL;
+	struct device *dev = (netdev) ? netdev->dev.parent : NULL;
 	int err = -ENOMEM;
 	int data_len = 0;
 	bool fragstolen;
@@ -4962,7 +4965,8 @@ int tcp_send_rcvq(struct sock *sk, struct msghdr *msg, size_t size)
 		data_len = npages << PAGE_SHIFT;
 		size = data_len + (size & ~PAGE_MASK);
 	}
-	skb = alloc_skb_with_frags(size - data_len, data_len,
+	/* Extract dev*/
+	skb = alloc_skb_with_frags(sk, dev, size - data_len, data_len,
 				   PAGE_ALLOC_COSTLY_ORDER,
 				   &err, sk->sk_allocation);
 	if (!skb)

@@ -2782,11 +2782,12 @@ static void pktgen_finalize_skb(struct pktgen_dev *pkt_dev, struct sk_buff *skb,
 			   (datalen/frags) : PAGE_SIZE;
 		while (datalen > 0) {
 			if (unlikely(!pkt_dev->page)) {
+				struct device *dev =  pkt_dev->odev->dev.parent;
 				int node = numa_node_id();
 
 				if (pkt_dev->node >= 0 && (pkt_dev->flags & F_NODE))
 					node = pkt_dev->node;
-				pkt_dev->page = alloc_pages_node(node, GFP_KERNEL | __GFP_ZERO, 0);
+				pkt_dev->page = dma_cache_alloc_page(dev, DMA_TO_DEVICE);
 				if (!pkt_dev->page)
 					break;
 			}
@@ -2842,7 +2843,8 @@ static struct sk_buff *pktgen_alloc_skb(struct net_device *dev,
 	if (pkt_dev->flags & F_NODE) {
 		int node = pkt_dev->node >= 0 ? pkt_dev->node : numa_node_id();
 
-		skb = __alloc_skb(NET_SKB_PAD + size, GFP_NOWAIT, 0, node);
+		skb = __alloc_skb(dev->dev.parent, NET_SKB_PAD + size, GFP_NOWAIT, 0,
+				  node);
 		if (likely(skb)) {
 			skb_reserve(skb, NET_SKB_PAD);
 			skb->dev = dev;
