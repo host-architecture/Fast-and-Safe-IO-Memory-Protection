@@ -709,6 +709,8 @@ static inline unsigned int folio_order(struct folio *folio)
 }
 
 #include <linux/huge_mm.h>
+#define DMA_CACHE_POISON	((void *)0x0D1E7C0C0BADB105)
+#define is_dma_cache_page(page) ((page)->device != DMA_CACHE_POISON)
 
 /*
  * Methods to modify the page usage count.
@@ -810,14 +812,11 @@ static inline int compound_mapcount(struct page *page)
 	return folio_entire_mapcount(page_folio(page));
 }
 
-#define DMA_CACHE_POISON	((void *)0x0D1E7C0C0BADB105)
 static inline void page_dma_cache_reset(struct page *page)
 {
 	page->iova = 0;
 	page->device = DMA_CACHE_POISON;
 }
-
-#define is_dma_cache_page(page) ((page)->device != DMA_CACHE_POISON)
 
 /*
  * The atomic page->_mapcount, starts from -1: so that transitions
@@ -1121,11 +1120,6 @@ static inline __must_check bool try_get_page(struct page *page)
 		return false;
 
 	VM_BUG_ON_PAGE(page_ref_count(page) <= 0, page);
-	if (unlikely(PageCompound(page)))
-		if (is_dma_cache_page(page)) {
-			//trace_printk("[g] page %lx (%d) :%lx\n", (unsigned long)page, atomic_read(&page->_refcount), (unsigned long)__builtin_return_address(0));
-			assert_local(page_count(page) != 0x1000);
-		}
 
 	page_ref_inc(page);
 	return true;
@@ -1200,12 +1194,6 @@ static inline void put_page(struct page *page)
 	if (put_devmap_managed_page(&folio->page))
 		return;
 
-	if (unlikely(PageCompound(page))) {
-		if (is_dma_cache_page(page)) {
-			//trace_printk("[p] page %lx (%d) :%lx\n", (unsigned long)page, atomic_read(&page->_refcount), (unsigned long)__builtin_return_address(0));
-			assert_local(page_count(page) != 0x1000);
-		}
-	}
 	folio_put(folio);
 }
 

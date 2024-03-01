@@ -61,6 +61,7 @@ size_t dma_cache_size(void *);
 #define dma_cache_alloc_page(d, dir) 		__dma_cache_alloc_page(d, dir, __FUNCTION__)
 #define dma_cache_alloc_pages(d, o, dir) 	__dma_cache_alloc_pages(d, o, dir, __FUNCTION__)
 #define dma_cache_free(d, p)			__dma_cache_free(d,p, __FUNCTION__)
+#define alloc_mapped_pages(d, p)		__alloc_mapped_pages(d,p, __FUNCTION__)
 
 void *__dma_cache_alloc(struct device *, size_t, enum dma_data_direction dir, const char *func);
 struct page *__dma_cache_alloc_page(struct device *dev, enum dma_data_direction dir, const char *func);
