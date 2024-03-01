@@ -1832,6 +1832,8 @@ void sk_destruct(struct sock *sk);
 struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority);
 void sk_free_unlock_clone(struct sock *sk);
 
+struct sk_buff *sock_dev_wmalloc(struct sock *sk, struct device *dev,
+				 unsigned long size, int force, gfp_t priority);
 struct sk_buff *sock_wmalloc(struct sock *sk, unsigned long size, int force,
 			     gfp_t priority);
 void __sock_wfree(struct sk_buff *skb);
@@ -1853,6 +1855,12 @@ int sock_setsockopt(struct socket *sock, int level, int op,
 
 int sock_getsockopt(struct socket *sock, int level, int op,
 		    char __user *optval, int __user *optlen);
+struct sk_buff *sock_dev_alloc_send_skb(struct sock *sk, struct device *dev, unsigned long size,
+                                   int noblock, int *errcode);
+struct sk_buff *sock_dev_alloc_send_pskb(struct sock *sk, struct device *dev,
+                                        unsigned long header_len,
+                                        unsigned long data_len, int noblock,
+                                        int *errcode, int max_page_order);
 int sock_gettstamp(struct socket *sock, void __user *userstamp,
 		   bool timeval, bool time32);
 struct sk_buff *sock_alloc_send_pskb(struct sock *sk, unsigned long header_len,
