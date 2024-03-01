@@ -275,7 +275,7 @@ static inline int mlx5e_page_alloc_pool(struct mlx5e_rq *rq,
 	if (mlx5e_rx_cache_get(rq, dma_info))
 		return 0;
 
-	dma_info->page = page_pool_dev_alloc_pages(rq->page_pool);
+	dma_info->page = dma_cache_alloc_pages(rq->pdev, 0, rq->buff.map_dir);
 	if (unlikely(!dma_info->page))
 		return -ENOMEM;
 
@@ -314,14 +314,10 @@ void mlx5e_page_release_dynamic(struct mlx5e_rq *rq, struct page *page, bool rec
 	if (likely(recycle)) {
 		if (mlx5e_rx_cache_put(rq, page))
 			return;
-
-		mlx5e_page_dma_unmap(rq, page);
-		page_pool_recycle_direct(rq->page_pool, page);
-	} else {
-		mlx5e_page_dma_unmap(rq, page);
-		page_pool_release_page(rq->page_pool, page);
-		put_page(page);
 	}
+	mlx5e_page_dma_unmap(rq, dma_info);
+	page_pool_release_page(rq->page_pool, page); //adding this myself
+	put_page(dma_info->page);
 }
 
 static inline void mlx5e_page_release(struct mlx5e_rq *rq,
