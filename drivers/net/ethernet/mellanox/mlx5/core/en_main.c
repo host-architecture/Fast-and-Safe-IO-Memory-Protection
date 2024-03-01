@@ -5718,6 +5718,8 @@ static int mlx5e_probe(struct auxiliary_device *adev,
 	struct mlx5e_priv *priv;
 	int err;
 
+	register_iova_map(&mdev->pdev->dev);
+	
 	netdev = mlx5e_create_netdev(mdev, profile);
 	if (!netdev) {
 		mlx5_core_err(mdev, "mlx5e_create_netdev failed\n");
