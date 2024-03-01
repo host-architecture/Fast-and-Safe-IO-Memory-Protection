@@ -40,6 +40,14 @@ extern int sysctl_page_lock_unfairness;
 
 void init_mm_internals(void);
 
+#define assert_local(expr) 	do { \
+				if (unlikely(!(expr))) { \
+					trace_printk("Assertion failed! %s, %s, %s, line %d\n", \
+						   #expr, __FILE__, __func__, __LINE__); \
+					panic("ASSERT FAILED: %s (%s)", __FUNCTION__, #expr); \
+				} \
+			} while (0)
+
 #ifndef CONFIG_NUMA		/* Don't use mapnrs, do it properly */
 extern unsigned long max_mapnr;
 
@@ -802,6 +810,15 @@ static inline int compound_mapcount(struct page *page)
 	return folio_entire_mapcount(page_folio(page));
 }
 
+#define DMA_CACHE_POISON	((void *)0x0D1E7C0C0BADB105)
+static inline void page_dma_cache_reset(struct page *page)
+{
+	page->iova = 0;
+	page->device = DMA_CACHE_POISON;
+}
+
+#define is_dma_cache_page(page) ((page)->device != DMA_CACHE_POISON)
+
 /*
  * The atomic page->_mapcount, starts from -1: so that transitions
  * both from it and to it can be tracked, using atomic_inc_and_test
@@ -1102,6 +1119,14 @@ static inline __must_check bool try_get_page(struct page *page)
 	page = compound_head(page);
 	if (WARN_ON_ONCE(page_ref_count(page) <= 0))
 		return false;
+
+	VM_BUG_ON_PAGE(page_ref_count(page) <= 0, page);
+	if (unlikely(PageCompound(page)))
+		if (is_dma_cache_page(page)) {
+			//trace_printk("[g] page %lx (%d) :%lx\n", (unsigned long)page, atomic_read(&page->_refcount), (unsigned long)__builtin_return_address(0));
+			assert_local(page_count(page) != 0x1000);
+		}
+
 	page_ref_inc(page);
 	return true;
 }
@@ -1174,6 +1199,13 @@ static inline void put_page(struct page *page)
 	 */
 	if (put_devmap_managed_page(&folio->page))
 		return;
+
+	if (unlikely(PageCompound(page))) {
+		if (is_dma_cache_page(page)) {
+			//trace_printk("[p] page %lx (%d) :%lx\n", (unsigned long)page, atomic_read(&page->_refcount), (unsigned long)__builtin_return_address(0));
+			assert_local(page_count(page) != 0x1000);
+		}
+	}
 	folio_put(folio);
 }
 
