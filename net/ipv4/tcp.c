@@ -857,8 +857,11 @@ struct sk_buff *tcp_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp,
 				     bool force_schedule)
 {
 	struct sk_buff *skb;
+	struct dst_entry *dst = sk_dst_get(sk);
+	struct net_device *netdev = (dst) ? dst->dev : NULL;
+	struct device *dev = (netdev) ? netdev->dev.parent : NULL;
 
-	skb = alloc_skb_fclone(size + MAX_TCP_HEADER, gfp);
+	skb = dev_alloc_skb_fclone(dev, size + MAX_TCP_HEADER, gfp);
 	if (likely(skb)) {
 		bool mem_scheduled;
 
@@ -1386,7 +1389,7 @@ new_segment:
 			} else {
 				skb_fill_page_desc(skb, i, pfrag->page,
 						   pfrag->offset, copy);
-				page_ref_inc(pfrag->page);
+				get_page(pfrag->page);
 			}
 			pfrag->offset += copy;
 		} else {
