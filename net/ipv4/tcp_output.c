@@ -3526,6 +3526,8 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 {
 	struct inet_request_sock *ireq = inet_rsk(req);
 	const struct tcp_sock *tp = tcp_sk(sk);
+	struct net_device *netdev = (dst) ? dst->dev : NULL;
+	struct device *dev = (netdev) ? netdev->dev.parent : NULL;
 	struct tcp_md5sig_key *md5 = NULL;
 	struct tcp_out_options opts;
 	struct sk_buff *skb;
@@ -3534,7 +3536,7 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 	int mss;
 	u64 now;
 
-	skb = alloc_skb(MAX_TCP_HEADER, GFP_ATOMIC);
+	skb = dma_alloc_skb(dev, MAX_TCP_HEADER, GFP_ATOMIC);
 	if (unlikely(!skb)) {
 		dst_release(dst);
 		return NULL;
@@ -3948,6 +3950,9 @@ void tcp_send_delayed_ack(struct sock *sk)
 void __tcp_send_ack(struct sock *sk, u32 rcv_nxt)
 {
 	struct sk_buff *buff;
+	struct dst_entry *dst = sk_dst_get(sk);
+	struct net_device *netdev = (dst) ? dst->dev : NULL;
+	struct device *dev = (netdev) ? netdev->dev.parent : NULL;
 
 	/* If we have been reset, we may not send again. */
 	if (sk->sk_state == TCP_CLOSE)
@@ -3957,7 +3962,7 @@ void __tcp_send_ack(struct sock *sk, u32 rcv_nxt)
 	 * tcp_transmit_skb() will set the ownership to this
 	 * sock.
 	 */
-	buff = alloc_skb(MAX_TCP_HEADER,
+	buff = dma_alloc_skb(dev, MAX_TCP_HEADER,
 			 sk_gfp_mask(sk, GFP_ATOMIC | __GFP_NOWARN));
 	if (unlikely(!buff)) {
 		struct inet_connection_sock *icsk = inet_csk(sk);
