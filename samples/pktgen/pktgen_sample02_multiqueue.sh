@@ -62,6 +62,8 @@ for ((thread = $F_THREAD; thread <= $L_THREAD; thread++)); do
 
     # Flag example disabling timestamping
     pg_set $dev "flag NO_TIMESTAMP"
+    pg_set $dev "flag NODE_ALLOC"
+    pg_set $dev "flag NO_TIMESTAMP"
 
     # Destination
     pg_set $dev "dst_mac $DST_MAC"
