@@ -45,7 +45,7 @@ enum dma_cache_frag_type {
 struct dev_iova_mag {
 	struct	mag_allocator allocator[NUM_ALLOCATORS];
 	atomic64_t last_idx[NUM_ALLOCATORS];
-	struct page_frag_cache frag_cache[CORES * 2][DMA_CACHE_FRAG_TYPES][DMA_CACHE_MAX_ORDER + 1];
+	struct page_frag_cache frag_cache[CORES * 2][DMA_CACHE_FRAG_TYPES][17]; // DMA_CACHE_MAX_ORDER + 1
 };
 
 u64 dma_cache_iova_key(u64);

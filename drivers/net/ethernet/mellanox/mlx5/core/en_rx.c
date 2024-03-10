@@ -315,9 +315,9 @@ void mlx5e_page_release_dynamic(struct mlx5e_rq *rq, struct page *page, bool rec
 		if (mlx5e_rx_cache_put(rq, page))
 			return;
 	}
-	mlx5e_page_dma_unmap(rq, dma_info);
+	mlx5e_page_dma_unmap(rq, page);
 	page_pool_release_page(rq->page_pool, page); //adding this myself
-	put_page(dma_info->page);
+	put_page(page);
 }
 
 static inline void mlx5e_page_release(struct mlx5e_rq *rq,

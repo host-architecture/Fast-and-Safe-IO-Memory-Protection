@@ -401,7 +401,7 @@ out:
  *	%GFP_ATOMIC.
  */
 struct sk_buff *__alloc_skb(struct device *device,
-+			    unsigned int size, gfp_t gfp_mask,
+			    unsigned int size, gfp_t gfp_mask,
 			    int flags, int node)
 {
 	struct kmem_cache *cache;

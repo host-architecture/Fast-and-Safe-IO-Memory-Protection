@@ -1345,8 +1345,8 @@ static int free_tail_pages_check(struct page *head_page, struct page *page)
 		goto out;
 	}
 	if (unlikely(is_dma_cache_page(page))) {
-               bad_page(page, "Freeing DMA Pages", 0);
-               goto out;
+            bad_page(page, "Freeing DMA Pages");
+            goto out;
     }
 	if (unlikely(compound_head(page) != head_page)) {
 		bad_page(page, "compound_head not consistent");

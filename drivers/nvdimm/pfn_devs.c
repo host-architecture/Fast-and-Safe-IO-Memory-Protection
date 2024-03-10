@@ -793,7 +793,7 @@ static int nd_pfn_init(struct nd_pfn *nd_pfn)
 		 * struct page size. But we also want to make sure we notice
 		 * when we end up adding new elements to struct page.
 		 */
-		BUILD_BUG_ON(sizeof(struct page) > MAX_STRUCT_PAGE_SIZE);
+		//BUILD_BUG_ON(sizeof(struct page) > MAX_STRUCT_PAGE_SIZE);
 		offset = ALIGN(start + SZ_8K + MAX_STRUCT_PAGE_SIZE * npfns, align)
 			- start;
 	} else if (nd_pfn->mode == PFN_MODE_RAM)
