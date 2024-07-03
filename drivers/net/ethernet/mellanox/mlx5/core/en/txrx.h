@@ -278,9 +278,11 @@ mlx5e_tx_dma_unmap(struct device *pdev, struct mlx5e_sq_dma *dma)
 {
 	switch (dma->type) {
 	case MLX5E_DMA_MAP_SINGLE:
-		dma_unmap_single(pdev, dma->addr, dma->size, DMA_TO_DEVICE);
+		//printk("in mlx5e_tx_dma_unmap, MLX5E_DMA_MAP_SINGLE");
+		dma_unmap_single_attrs_ack(pdev, dma->addr, dma->size, DMA_TO_DEVICE,0);
 		break;
 	case MLX5E_DMA_MAP_PAGE:
+		//printk("in mlx5e_tx_dma_unmap, MLX5E_DMA_MAP_PAGE");
 		dma_unmap_page_attrs_ack(pdev, dma->addr, dma->size, DMA_TO_DEVICE,0);
 		break;
 	default:

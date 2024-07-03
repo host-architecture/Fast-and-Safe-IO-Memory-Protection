@@ -182,6 +182,8 @@ void dma_unmap_page_attrs_ack(struct device *dev, dma_addr_t addr, size_t size,
 {
 	const struct dma_map_ops *ops = get_dma_ops(dev);
 
+	//printk("in dma_unmap_page_attrs_ack");
+
 	BUG_ON(!valid_dma_direction(dir));
 	if (dma_map_direct(dev, ops) ||
 	    arch_dma_unmap_page_direct(dev, addr + size))
