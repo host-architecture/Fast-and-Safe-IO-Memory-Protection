@@ -713,7 +713,7 @@ static void __iommu_dma_unmap_ack(struct device *dev, dma_addr_t dma_addr,
 
 	if (!iotlb_gather.queued) {
 		// comment out the iotlb invalidation
-		iommu_iotlb_sync(domain, &iotlb_gather); 
+		iommu_iotlb_sync_ih(domain, &iotlb_gather); 
 	}
 
 	iommu_dma_free_iova(cookie, dma_addr, size, &iotlb_gather);

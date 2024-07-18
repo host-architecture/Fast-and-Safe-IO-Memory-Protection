@@ -1549,6 +1549,66 @@ static void iommu_flush_iotlb_psi(struct intel_iommu *iommu,
 		iommu_flush_dev_iotlb(domain, addr, mask);
 }
 
+static void iommu_flush_iotlb_psi_ih(struct intel_iommu *iommu,
+				  struct dmar_domain *domain,
+				  unsigned long pfn, unsigned int pages,
+				  int ih, int map)
+{
+	unsigned int aligned_pages = __roundup_pow_of_two(pages);
+	unsigned int mask = ilog2(aligned_pages);
+	uint64_t addr = (uint64_t)pfn << VTD_PAGE_SHIFT;
+	u16 did = domain_id_iommu(domain, iommu);
+
+	BUG_ON(pages == 0);
+
+	if (ih)
+		ih = 1 << 6;
+
+	if (domain_use_first_level(domain)) {
+		qi_flush_piotlb(iommu, did, PASID_RID2PASID, addr, pages, ih);
+	} else {
+		unsigned long bitmask = aligned_pages - 1;
+
+		/*
+		 * PSI masks the low order bits of the base address. If the
+		 * address isn't aligned to the mask, then compute a mask value
+		 * needed to ensure the target range is flushed.
+		 */
+		if (unlikely(bitmask & pfn)) {
+			unsigned long end_pfn = pfn + pages - 1, shared_bits;
+
+			/*
+			 * Since end_pfn <= pfn + bitmask, the only way bits
+			 * higher than bitmask can differ in pfn and end_pfn is
+			 * by carrying. This means after masking out bitmask,
+			 * high bits starting with the first set bit in
+			 * shared_bits are all equal in both pfn and end_pfn.
+			 */
+			shared_bits = ~(pfn ^ end_pfn) & ~bitmask;
+			mask = shared_bits ? __ffs(shared_bits) : BITS_PER_LONG;
+		}
+
+		/*
+		 * Fallback to domain selective flush if no PSI support or
+		 * the size is too big.
+		 */
+		if (!cap_pgsel_inv(iommu->cap) ||
+		    mask > cap_max_amask_val(iommu->cap))
+			iommu->flush.flush_iotlb(iommu, did, 0, 0,
+							DMA_TLB_DSI_FLUSH);
+		else
+			iommu->flush.flush_iotlb_ih(iommu, did, addr | ih, mask,
+							DMA_TLB_PSI_FLUSH);
+	}
+
+	/*
+	 * In caching mode, changes of pages from non-present to present require
+	 * flush. However, device IOTLB doesn't need to be flushed in this case.
+	 */
+	if (!cap_caching_mode(iommu->cap) || !map)
+		iommu_flush_dev_iotlb(domain, addr, mask);
+}
+
 /* Notification for newly created mappings */
 static inline void __mapping_notify_one(struct intel_iommu *iommu,
 					struct dmar_domain *domain,
@@ -2638,6 +2698,7 @@ static void intel_iommu_init_qi(struct intel_iommu *iommu)
 	} else {
 		iommu->flush.flush_context = qi_flush_context;
 		iommu->flush.flush_iotlb = qi_flush_iotlb;
+		iommu->flush.flush_iotlb_ih = qi_flush_iotlb_ih;
 		pr_info("%s: Using Queued invalidation\n", iommu->name);
 	}
 }
@@ -4364,6 +4425,28 @@ static void intel_iommu_tlb_sync(struct iommu_domain *domain,
 	put_pages_list(&gather->freelist);
 }
 
+static void intel_iommu_tlb_sync_ih(struct iommu_domain *domain,
+				 struct iommu_iotlb_gather *gather)
+{
+	struct dmar_domain *dmar_domain = to_dmar_domain(domain);
+	unsigned long iova_pfn = IOVA_PFN(gather->start);
+	size_t size = gather->end - gather->start;
+	struct iommu_domain_info *info;
+	unsigned long start_pfn;
+	unsigned long nrpages;
+	unsigned long i;
+
+	nrpages = aligned_nrpages(gather->start, size);
+	start_pfn = mm_to_dma_pfn(iova_pfn);
+
+	xa_for_each(&dmar_domain->iommu_array, i, info)
+		iommu_flush_iotlb_psi_ih(info->iommu, dmar_domain,
+				      start_pfn, nrpages,
+				      list_empty(&gather->freelist), 0);
+
+	put_pages_list(&gather->freelist);
+}
+
 static phys_addr_t intel_iommu_iova_to_phys(struct iommu_domain *domain,
 					    dma_addr_t iova)
 {
@@ -4773,6 +4856,7 @@ const struct iommu_ops intel_iommu_ops = {
 		.iotlb_sync_map		= intel_iommu_iotlb_sync_map,
 		.flush_iotlb_all        = intel_flush_iotlb_all,
 		.iotlb_sync		= intel_iommu_tlb_sync,
+		.iotlb_sync_ih		= intel_iommu_tlb_sync_ih,
 		.iova_to_phys		= intel_iommu_iova_to_phys,
 		.free			= intel_iommu_domain_free,
 		.enforce_cache_coherency = intel_iommu_enforce_cache_coherency,
