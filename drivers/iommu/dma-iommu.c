@@ -654,7 +654,7 @@ dma_addr_t iommu_dma_alloc_iova(struct iommu_domain *domain,
 }
 EXPORT_SYMBOL(iommu_dma_alloc_iova);
 
-static void iommu_dma_free_iova(struct iommu_dma_cookie *cookie,
+void iommu_dma_free_iova(struct iommu_dma_cookie *cookie,
 		dma_addr_t iova, size_t size, struct iommu_iotlb_gather *gather)
 {
 	struct iova_domain *iovad = &cookie->iovad;
@@ -670,6 +670,22 @@ static void iommu_dma_free_iova(struct iommu_dma_cookie *cookie,
 		free_iova_fast(iovad, iova_pfn(iovad, iova),
 				size >> iova_shift(iovad));
 }
+EXPORT_SYMBOL(iommu_dma_free_iova);
+
+void iommu_dma_free_iova_fs(struct iommu_domain *domain,
+		dma_addr_t iova, size_t size)
+{
+	struct iommu_dma_cookie *cookie = domain->iova_cookie;
+	struct iova_domain *iovad = &cookie->iovad;
+	// struct iommu_iotlb_gather iotlb_gather;
+	// iommu_iotlb_gather_init(&iotlb_gather);
+	// iotlb_gather.queued = READ_ONCE(cookie->fq_domain);
+
+	free_iova_fast(iovad, iova_pfn(iovad, iova),
+				size >> iova_shift(iovad));
+}
+EXPORT_SYMBOL(iommu_dma_free_iova_fs);
+
 
 static void __iommu_dma_unmap(struct device *dev, dma_addr_t dma_addr,
 		size_t size)
@@ -736,6 +752,8 @@ static dma_addr_t __iommu_dma_map(struct device *dev, phys_addr_t phys, dma_addr
 		return DMA_MAPPING_ERROR;
 
 	size = iova_align(iovad, size + iova_off);
+	//printk("IOVA size: %lu, iova off: %lu", size, iova_off);
+
     if (iova_addr) {
 		iova = iova_addr;
 	} else {

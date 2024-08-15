@@ -93,6 +93,9 @@ struct page_pool;
 #define MLX5_MPWRQ_DEF_LOG_STRIDE_SZ(mdev) \
 	MLX5_MPWRQ_LOG_STRIDE_SZ(mdev, order_base_2(MLX5E_RX_MAX_HEAD))
 
+
+#define TX_IOVA_ALLOC_SZ 64
+
 #define MLX5_MPWRQ_LOG_WQE_SZ			18
 #define MLX5_MPWRQ_WQE_PAGE_ORDER  (MLX5_MPWRQ_LOG_WQE_SZ - PAGE_SHIFT > 0 ? \
 				    MLX5_MPWRQ_LOG_WQE_SZ - PAGE_SHIFT : 0)
@@ -395,6 +398,8 @@ struct mlx5e_sq_dma {
 	dma_addr_t              addr;
 	u32                     size;
 	enum mlx5e_dma_map_type type;
+	bool two_iovas;
+	dma_addr_t free_iova;
 };
 
 enum {
@@ -452,6 +457,8 @@ struct mlx5e_txqsq {
 		struct mlx5e_sq_dma       *dma_fifo;
 		struct mlx5e_skb_fifo      skb_fifo;
 		struct mlx5e_tx_wqe_info  *wqe_info;
+		int iova_index;
+		dma_addr_t iova_base;
 	} db;
 	void __iomem              *uar_map;
 	struct netdev_queue       *txq;

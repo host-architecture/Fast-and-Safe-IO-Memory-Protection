@@ -2239,6 +2239,9 @@ __domain_mapping(struct dmar_domain *domain, unsigned long iov_pfn,
 			}
 
 		}
+
+		//printk(KERN_INFO "domain: iov pfn: %lu, num pages: %lu", iov_pfn, nr_pages);
+
 		/* We don't need lock here, nobody else
 		 * touches the iova range
 		 */
@@ -4271,8 +4274,8 @@ static int intel_iommu_map(struct iommu_domain *domain,
 		end = __DOMAIN_MAX_ADDR(dmar_domain->gaw) + 1;
 		if (end < max_addr) {
 			pr_err("%s: iommu width (%d) is not "
-			       "sufficient for the mapped address (%llx)\n",
-			       __func__, dmar_domain->gaw, max_addr);
+			       "sufficient for the mapped address (%llx). iova: %lx, size: %lu\n",
+			       __func__, dmar_domain->gaw, max_addr, iova, size);
 			return -EFAULT;
 		}
 		dmar_domain->max_addr = max_addr;

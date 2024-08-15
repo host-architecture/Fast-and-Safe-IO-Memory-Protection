@@ -34,6 +34,8 @@
 #include <linux/if_vlan.h>
 #include <net/geneve.h>
 #include <net/dsfield.h>
+#include <linux/dma-iommu.h>
+#include <linux/iommu.h>
 #include "en.h"
 #include "en/txrx.h"
 #include "ipoib/ipoib.h"
@@ -172,6 +174,60 @@ mlx5e_tx_get_gso_ihs(struct mlx5e_txqsq *sq, struct sk_buff *skb, int *hopbyhop)
 	return ihs;
 }
 
+static inline void pre_alloc_iovas(struct mlx5e_txqsq *sq) {
+	// current value is sq->dma_fifo_pc, check if it's an allocation boundary
+	if ((sq->dma_fifo_pc % TX_IOVA_ALLOC_SZ) == 0) { //IOVA allocation boundary
+		//allocate a new IOVA
+		dma_addr_t iova = iommu_dma_alloc_iova(iommu_get_dma_domain(sq->pdev), TX_IOVA_ALLOC_SZ * 4096, dma_get_mask(sq->pdev), sq->pdev);
+		WARN_ON(!iova);
+		//printk("allocated IOVA: %llu", iova);
+
+
+		//fill in the next TX_IOVA_ALLOC_SZ dma entries with the addr (starting with the end)
+		for (int i = TX_IOVA_ALLOC_SZ-1; i>=0; i--){
+			struct mlx5e_sq_dma *dma = mlx5e_dma_get(sq, sq->dma_fifo_pc + i);
+			dma->addr=iova;
+			iova += 4096;
+		}
+	}
+}
+
+static inline void alloc_contig_iova(struct mlx5e_txqsq *sq, bool two_iovas) {
+	struct mlx5e_sq_dma *dma = mlx5e_dma_get(sq, sq->dma_fifo_pc);
+
+	//set the free_iova in the dma struct to 0.
+	dma->free_iova = 0;
+
+	//TODO: use i instead of dma_fifo_pc
+	if ((sq->db.iova_index == 0) || (sq->db.iova_index == TX_IOVA_ALLOC_SZ) || 
+		(((sq->db.iova_index + 1) == TX_IOVA_ALLOC_SZ) && two_iovas)) { //IOVA allocation boundary
+
+		sq->db.iova_index = 0; // reset the index
+
+		//put the old IOVA base in the dma struct to use for freeing.
+		if (sq->db.iova_base) { // only if it's been intialized already
+			dma->free_iova = sq->db.iova_base;
+		}
+
+		//allocate a new IOVA
+		dma_addr_t iova = iommu_dma_alloc_iova(iommu_get_dma_domain(sq->pdev), TX_IOVA_ALLOC_SZ * 4096, dma_get_mask(sq->pdev), sq->pdev);
+		WARN_ON(!iova);
+
+		//set it to the new iova_base
+		sq->db.iova_base = iova;
+	} 
+
+	dma->two_iovas = two_iovas;
+	dma->addr = sq->db.iova_base + (sq->db.iova_index * 4096);
+	sq->db.iova_index++;
+
+	// if it used two iovas, then increment it twice
+	if (two_iovas) {
+		sq->db.iova_index++;
+	}
+
+}
+
 static inline int
 mlx5e_txwqe_build_dsegs(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 			unsigned char *skb_data, u16 headlen,
@@ -181,11 +237,30 @@ mlx5e_txwqe_build_dsegs(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 	u8 num_dma          = 0;
 	int i;
 
+	// pull out into function pre_alloc_iovas(sq)
+
 	if (headlen) {
-		dma_addr = dma_map_single(sq->pdev, skb_data, headlen,
-					  DMA_TO_DEVICE);
-		if (unlikely(dma_mapping_error(sq->pdev, dma_addr)))
+		alloc_contig_iova(sq, false);
+		struct mlx5e_sq_dma *dma = mlx5e_dma_get(sq, sq->dma_fifo_pc);
+		dma_addr_t iova = dma->addr;
+		// printk("pc (linear): %u, iova: %llu, size: %d, offset: %lu, cpu: %d", sq->dma_fifo_pc, iova/4096, headlen, 
+		// 	offset_in_page(skb_data), smp_processor_id());
+
+		//rather than dma_map_single, we instead do our own IOVA map, set first IOVA to true
+		WARN_ON(headlen > 4096);
+		WARN_ON(iova==0);
+
+		dma_addr = dma_map_page_attrs_iova(sq->pdev, virt_to_page(skb_data), iova, true, offset_in_page(skb_data), headlen, DMA_TO_DEVICE, 0);
+		//printk("dma addr: %llu, cpu: %d", (dma->addr - offset_in_page(dma->addr))/4096, smp_processor_id());
+
+		// dma_addr = dma_map_single(sq->pdev, skb_data, headlen,
+		// 			  DMA_TO_DEVICE);
+		//can now call push with the dma_addr returned since it should just use the one we specified, but with the right offset (TODO use printk to ensure this, i'm pretty sure this works since I checkd the code)
+		//now use this exact same logic for each mapping. And then for unmapping i'll use the unmap wihtout free IOVA until i've freed the last one in a batch and then i'll come unmap but set the flag that frees the whole iova. 
+		if (unlikely(dma_mapping_error(sq->pdev, dma_addr))) {
+			//printk("map error: headlen");
 			goto dma_unmap_wqe_err;
+		}
 
 		dseg->addr       = cpu_to_be64(dma_addr);
 		dseg->lkey       = sq->mkey_be;
@@ -199,11 +274,32 @@ mlx5e_txwqe_build_dsegs(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 		int fsz = skb_frag_size(frag);
+		bool two_iovas = false;
 
-		dma_addr = skb_frag_dma_map(sq->pdev, frag, 0, fsz,
-					    DMA_TO_DEVICE);
-		if (unlikely(dma_mapping_error(sq->pdev, dma_addr)))
+		if ((skb_frag_off(frag) % 4096) + fsz > 4096) { //requires 2 IOVAs
+			two_iovas = true;
+		}
+
+		alloc_contig_iova(sq, two_iovas);
+		struct mlx5e_sq_dma *dma = mlx5e_dma_get(sq, sq->dma_fifo_pc);
+		dma_addr_t iova = dma->addr;
+		//printk("pc (non-linear): %u, iova: %llu, size: %d, offset: %u, cpu: %d", sq->dma_fifo_pc, iova/4096, fsz, skb_frag_off(frag), smp_processor_id());
+
+		//rather than dma_map_single, we instead do our own IOVA map, set first IOVA to true
+		WARN_ON(fsz > 4096);
+		WARN_ON(iova==0);
+		dma_addr = dma_map_page_attrs_iova(sq->pdev, skb_frag_page(frag), iova, true, skb_frag_off(frag), fsz, DMA_TO_DEVICE, 0);
+		//printk("dma addr: %llu, cpu: %d", (dma->addr - offset_in_page(dma->addr))/4096, smp_processor_id());
+		
+		//printk("post (non-linear) dma address: %llu",dma_addr);
+		// dma_addr = skb_frag_dma_map(sq->pdev, frag, 0, fsz,
+		// 			    DMA_TO_DEVICE);
+		//printk("frag: length of mapping: %u, address: %llu", fsz, dma_addr);
+		
+		if (unlikely(dma_mapping_error(sq->pdev, dma_addr))) {
+			//printk("map error: frag");
 			goto dma_unmap_wqe_err;
+		}
 
 		dseg->addr       = cpu_to_be64(dma_addr);
 		dseg->lkey       = sq->mkey_be;
@@ -584,7 +680,19 @@ mlx5e_sq_xmit_mpwqe(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 	txd.data = skb->data;
 	txd.len = skb->len;
 
-	txd.dma_addr = dma_map_single(sq->pdev, txd.data, txd.len, DMA_TO_DEVICE);
+	alloc_contig_iova(sq, false);
+	struct mlx5e_sq_dma *dma = mlx5e_dma_get(sq, sq->dma_fifo_pc);
+	dma_addr_t iova = dma->addr;
+	//printk("iova: %llu", iova);
+	//printk("pc (mpwqe): %u, iova: %llu, size: %d, cpu: %d", sq->dma_fifo_pc, iova, txd.len, smp_processor_id());
+
+	//rather than dma_map_single, we instead do our own IOVA map, set first IOVA to true
+	WARN_ON(txd.len > 4096);
+	WARN_ON(iova==0);
+	txd.dma_addr = dma_map_page_attrs_iova(sq->pdev, virt_to_page(txd.data), iova, true, offset_in_page(txd.data), txd.len, DMA_TO_DEVICE, 0);	
+
+	//txd.dma_addr = dma_map_single(sq->pdev, txd.data, txd.len, DMA_TO_DEVICE);
+	//printk("mpwqe: length of mapping: %u, address: %llu", txd.len, txd.dma_addr);
 	if (unlikely(dma_mapping_error(sq->pdev, txd.dma_addr)))
 		goto err_unmap;
 
@@ -618,6 +726,7 @@ mlx5e_sq_xmit_mpwqe(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 	return;
 
 err_unmap:
+	//printk("map error: mpwqe");
 	mlx5e_dma_unmap_wqe_err(sq, 1);
 	sq->stats->dropped++;
 	dev_kfree_skb_any(skb);
@@ -730,9 +839,27 @@ static void mlx5e_tx_wi_dma_unmap(struct mlx5e_txqsq *sq, struct mlx5e_tx_wqe_in
 	int i;
 
 	for (i = 0; i < wi->num_dma; i++) {
+		//u32 cc = *dma_fifo_cc;
 		struct mlx5e_sq_dma *dma = mlx5e_dma_get(sq, (*dma_fifo_cc)++);
 
-		mlx5e_tx_dma_unmap(sq->pdev, dma);
+		// we are guaranteed it's the beginning of the IOVA
+		//struct mlx5e_sq_dma *prev_dma = mlx5e_dma_get(sq, cc-1);
+		dma_unmap_page_attrs_iova(sq->pdev, dma->addr, dma->size, 0, false, 
+		DMA_TO_DEVICE, 0);
+			//printk("unmap cc (free): %u, iova: %llu, cpu: %d\n", cc, (dma->addr - offset_in_page(dma->addr)), smp_processor_id());
+			//printk("dma addr: %llu, offset: %lu, prev dma_addr: %llu", dma->addr, offset_in_page(dma->addr), prev_dma->addr);
+			//TODO: Add printk to understand if the dma->addr is aligned and then how to align it (can I just use the offset function I used earlier?)
+		if (dma->free_iova) {
+			struct iommu_domain *domain = iommu_get_dma_domain(sq->pdev);
+			//struct iommu_dma_cookie *cookie = domain->iova_cookie;
+
+			iommu_dma_free_iova_fs(domain, dma->free_iova, TX_IOVA_ALLOC_SZ * 4096);
+		}
+		dma->addr=0;
+		//replace this with a call to our unmap_iova function
+		// mlx5e_tx_dma_unmap(sq->pdev, dma);
+		// dma_unmap_page_attrs_iova(sq->pdev, dma->addr, dma->size, size_t iova_size, bool free_iova,
+		// DMA_TO_DEVICE, 0);
 	}
 }
 

@@ -26,6 +26,10 @@ dma_addr_t iommu_dma_map_page(struct device *dev, struct page *page,
 		unsigned long attrs);
 dma_addr_t iommu_dma_alloc_iova(struct iommu_domain *domain,
 		size_t size, u64 dma_limit, struct device *dev);
+void iommu_dma_free_iova(struct iommu_dma_cookie *cookie,
+		dma_addr_t iova, size_t size, struct iommu_iotlb_gather *gather);
+void iommu_dma_free_iova_fs(struct iommu_domain *domain,
+		dma_addr_t iova, size_t size);
 
 /* Domain management interface for IOMMU drivers */
 int iommu_get_dma_cookie(struct iommu_domain *domain);
@@ -63,6 +67,7 @@ struct iommu_domain;
 struct msi_desc;
 struct msi_msg;
 struct device;
+
 
 static inline void iommu_setup_dma_ops(struct device *dev, u64 dma_base,
 				       u64 dma_limit)

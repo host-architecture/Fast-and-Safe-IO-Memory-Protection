@@ -1270,6 +1270,17 @@ int mlx5e_alloc_txqsq_db(struct mlx5e_txqsq *sq, int numa)
 {
 	int wq_sz = mlx5_wq_cyc_get_size(&sq->wq);
 	int df_sz = wq_sz * MLX5_SEND_WQEBB_NUM_DS;
+	//printk("wq size: %d, df size: %d\n", wq_sz, df_sz);
+	
+	//warn if either TX_IOVA_ALLOC_SZ is smaller than df_sz or if it doesn't divide it.
+	if (df_sz < TX_IOVA_ALLOC_SZ) {
+		WARN_ON(df_sz < TX_IOVA_ALLOC_SZ);
+		printk("warn size: %d\n", df_sz);
+	}
+	if (df_sz % TX_IOVA_ALLOC_SZ) {
+		WARN_ON(df_sz % TX_IOVA_ALLOC_SZ);
+		printk("warn mod size: %d, %d\n", df_sz, (df_sz % TX_IOVA_ALLOC_SZ));
+	}
 
 	sq->db.dma_fifo = kvzalloc_node(array_size(df_sz,
 						   sizeof(*sq->db.dma_fifo)),
@@ -1290,6 +1301,9 @@ int mlx5e_alloc_txqsq_db(struct mlx5e_txqsq *sq, int numa)
 	sq->db.skb_fifo.pc   = &sq->skb_fifo_pc;
 	sq->db.skb_fifo.cc   = &sq->skb_fifo_cc;
 	sq->db.skb_fifo.mask = df_sz - 1;
+
+	sq->db.iova_index = 0;
+	sq->db.iova_base = 0;
 
 	return 0;
 }
