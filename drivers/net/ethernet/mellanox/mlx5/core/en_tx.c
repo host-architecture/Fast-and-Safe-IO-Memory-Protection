@@ -838,21 +838,62 @@ static void mlx5e_tx_wi_dma_unmap(struct mlx5e_txqsq *sq, struct mlx5e_tx_wqe_in
 {
 	int i;
 
+	bool contiguous = true;
+	dma_addr_t prev_iova = 0;
+	bool prev_two_iovas = false;
+	int dma_size = 0;
+	//printk("Unmap: %u, core: %d\n", *dma_fifo_cc, smp_processor_id());
+	for (i = 0; i < wi->num_dma; i++) {
+		dma_addr_t curr_iova;
+		struct mlx5e_sq_dma *dma = mlx5e_dma_get(sq, (*dma_fifo_cc)+i);
+		curr_iova = (dma->addr - offset_in_page(dma->addr))/4096; 
+		dma_size += (dma->two_iovas ? 2 : 1);
+		if (prev_iova == 0) {
+			prev_iova = curr_iova;
+			prev_two_iovas = dma->two_iovas;
+			continue;
+		}
+
+		//if curr_iova is within 1 or within 2 but it used 2 IOVAs
+		dma_addr_t difference = curr_iova - prev_iova;
+		contiguous = difference == 1 || (difference == 2 && prev_two_iovas);
+		//printk("curr iova: %llu, prev iova: %llu, contiguous: %d, prev_two_iovas: %d, dma_size: %d, new_unmap: %d, core: %d\n", curr_iova, prev_iova, contiguous, prev_two_iovas, dma_size, new_unmap, smp_processor_id());
+		prev_iova = curr_iova;
+		prev_two_iovas = dma->two_iovas;
+		if (!contiguous)
+			break;
+		
+	}
+
+	if (contiguous) {
+		struct mlx5e_sq_dma *dma; 
+		int unmap_size;
+		dma = mlx5e_dma_get(sq, *dma_fifo_cc);	
+		unmap_size = dma_size * 4096;
+		//printk("iova: %llu, unmap_size: %d, core: %d\n", (dma->addr - offset_in_page(dma->addr)), unmap_size, smp_processor_id());
+
+		dma_unmap_page_attrs_iova(sq->pdev, (dma->addr - offset_in_page(dma->addr)), unmap_size, 0, false, 
+			DMA_TO_DEVICE, 0);
+	} else {
+		//printk("not contiguous");
+	}
+
 	for (i = 0; i < wi->num_dma; i++) {
 		//u32 cc = *dma_fifo_cc;
 		struct mlx5e_sq_dma *dma = mlx5e_dma_get(sq, (*dma_fifo_cc)++);
 
 		// we are guaranteed it's the beginning of the IOVA
 		//struct mlx5e_sq_dma *prev_dma = mlx5e_dma_get(sq, cc-1);
-		dma_unmap_page_attrs_iova(sq->pdev, dma->addr, dma->size, 0, false, 
-		DMA_TO_DEVICE, 0);
+		if (!contiguous)
+			dma_unmap_page_attrs_iova(sq->pdev, dma->addr, dma->size, 0, false, 
+				DMA_TO_DEVICE, 0);
 			//printk("unmap cc (free): %u, iova: %llu, cpu: %d\n", cc, (dma->addr - offset_in_page(dma->addr)), smp_processor_id());
 			//printk("dma addr: %llu, offset: %lu, prev dma_addr: %llu", dma->addr, offset_in_page(dma->addr), prev_dma->addr);
 			//TODO: Add printk to understand if the dma->addr is aligned and then how to align it (can I just use the offset function I used earlier?)
 		if (dma->free_iova) {
 			struct iommu_domain *domain = iommu_get_dma_domain(sq->pdev);
 			//struct iommu_dma_cookie *cookie = domain->iova_cookie;
-
+			//dma_unmap_page_attrs(sq->pdev, dma->free_iova, TX_IOVA_ALLOC_SZ * 4096, DMA_TO_DEVICE, 0);
 			iommu_dma_free_iova_fs(domain, dma->free_iova, TX_IOVA_ALLOC_SZ * 4096);
 		}
 		dma->addr=0;

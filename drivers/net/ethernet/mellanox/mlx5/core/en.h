@@ -94,7 +94,7 @@ struct page_pool;
 	MLX5_MPWRQ_LOG_STRIDE_SZ(mdev, order_base_2(MLX5E_RX_MAX_HEAD))
 
 
-#define TX_IOVA_ALLOC_SZ 64
+#define TX_IOVA_ALLOC_SZ 32
 
 #define MLX5_MPWRQ_LOG_WQE_SZ			18
 #define MLX5_MPWRQ_WQE_PAGE_ORDER  (MLX5_MPWRQ_LOG_WQE_SZ - PAGE_SHIFT > 0 ? \
