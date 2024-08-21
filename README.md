@@ -1,4 +1,4 @@
-# F&S: Fast & Safe IO Memory Proction for Networked Systems
+# F&S: Fast & Safe IO Memory Protection
 Memory protection is a security property that prevents an errant network interface card (NIC) from reading/writing to regions of host memory not mapped for DMA. The Input-Output Memory Management Unit (IOMMU) provides this protection via address translation: the NIC is given an IO Virtual Address (IOVA) that must be translated to a physical address by the IOMMU. This translation is sped up by an IOTLB that maps virtual addresses to physical addresses. Upon an IOTLB miss, the IOMMU must walk an IO page table sitting in host memory to obtain the virtual address. In addition to the IOTLB, modern IOMMUs contain a series of caches that cache intermediate page table entries that can speed up the page table walk. 
 
 The key insight of F&S is that instead of focusing on reducing the IOTLB misses (which cannot be avoided with the strictest memory protection), we should reduce the *cost* of each miss by leveraging the IOMMU page table caches. With this perspective shift, we implement a few simple changes inside the Linux kernel to achieve memory protection with near-zero overhead. The main design ideas of F&S are:
@@ -44,10 +44,10 @@ F&S has been successfully tested on Ubuntu 20.04 LTS with kernel 6.0.3. Building
 2. Apply the F&S patch 
 
    ```
-   git clone -b artifact_eval --single-branch git@github.com:bennyrubin/linux_iommu.git 
-   cp linux_iommu/fands.patch linux-6.0.3/
+   git clone -b artifact_eval --single-branch git@github.com:host-architecture/Fast-and-Safe-IO-Memory-Protection.git
+   cp ~/Fast-and-Safe-IO-Memory-Protection/fands.patch ~/linux-6.0.3/
    cd linux-6.0.3
-   git apply 
+   patch -p1 --ignore-whitespace < ~/Fast-and-Safe-IO-Memory-Protection/fands.patch
    ```
 
 3. Update kernel configuration:

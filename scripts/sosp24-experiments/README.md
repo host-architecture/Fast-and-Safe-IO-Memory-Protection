@@ -58,7 +58,7 @@ dmesg | grep -i "iommu"
 ```
 
 ### Detailed Instructions 
-Now we provide how to use our scripts to reproduce the results in the paper. All scripts assume the working directory is `linux_iommu/scripts/sosp24-experiments`. The compute time listed is per-configuration. 
+Now we provide how to use our scripts to reproduce the results in the paper. All scripts assume the working directory is `Fast-and-Safe-IO-Memory-Protection/scripts/sosp24-experiments`. The compute time listed is per-configuration. 
 
 #### Figure 2 - Varying Number of Flows (20 compute-mins)
 **[Linux, Linux + IOMMU On]**
