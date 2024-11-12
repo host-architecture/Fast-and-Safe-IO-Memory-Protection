@@ -509,9 +509,9 @@ mlx5e_free_rx_mpwqe(struct mlx5e_rq *rq, struct mlx5e_mpw_info *wi, bool recycle
 
 	for (i = 0; i < MLX5_MPWRQ_PAGES_PER_WQE; i++) {
 		if (no_xdp_xmit || !test_bit(i, wi->xdp_xmit_bitmap)) { 
-			WARN_ON(!dma_info[i].batch_iova);
+			//WARN_ON(!dma_info[i].batch_iova);
 		//	if (dma_info[i].batch_iova) {
-			if (true) {
+			if (device_iommu_mapped(rq->pdev)) {
 				//printk("debug: yes_batch, iova_size: %lu, iova: %llu, addr: %llu", dma_info[i].iova_size,dma_info[i].iova,dma_info[i].addr);
 				dma_info[i].iova_size = 4096 * 64;
 				dma_info[i].batch_iova = true;
@@ -714,7 +714,7 @@ static int mlx5e_alloc_rx_mpwqe(struct mlx5e_rq *rq, u16 ix)
 	struct mlx5_wq_cyc *wq = &sq->wq;
 	struct mlx5e_umr_wqe *umr_wqe;
 	unsigned long iova_allocation_size;
-	bool batch_iova;
+	bool fands;
 	dma_addr_t iova_base;
 	dma_addr_t iova;
 	u16 pi;
@@ -744,11 +744,11 @@ static int mlx5e_alloc_rx_mpwqe(struct mlx5e_rq *rq, u16 ix)
 
 	/* Batch IOVA allocation changes */
 	iova_allocation_size = 4096 * MLX5_MPWRQ_PAGES_PER_WQE;
-	batch_iova = true;
+	fands = device_iommu_mapped(rq->pdev);
 
 	iova_base = 0;
 	iova = 0;
-	if (batch_iova) {
+	if (fands) {
 		iova_base = iommu_dma_alloc_iova(iommu_get_dma_domain(rq->pdev), iova_allocation_size, dma_get_mask(rq->pdev), rq->pdev);
 		WARN_ON(!iova_base);
 	}
@@ -756,11 +756,11 @@ static int mlx5e_alloc_rx_mpwqe(struct mlx5e_rq *rq, u16 ix)
 	/* End of Batch IOVA allocation changes*/
 
 	for (i = 0; i < MLX5_MPWRQ_PAGES_PER_WQE; i++, dma_info++) {
-		dma_info->batch_iova = batch_iova;
+		dma_info->batch_iova = fands;
 		dma_info->iova = 0;
 		dma_info->iova_size = 0;
 		dma_info->first_iova = false;
-		if (batch_iova) {
+		if (fands) {
 			iova = iova_base + (i * 4096);
 			//printk("DEBUG: alloc page with iova %llu, cpu: %d", iova, smp_processor_id());
 			dma_info->iova = iova;
