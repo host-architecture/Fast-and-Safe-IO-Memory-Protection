@@ -4362,7 +4362,7 @@ static void intel_iommu_tlb_sync(struct iommu_domain *domain,
 	xa_for_each(&dmar_domain->iommu_array, i, info)
 		iommu_flush_iotlb_psi(info->iommu, dmar_domain,
 				      start_pfn, nrpages,
-				      1, 0);
+				      list_empty(&gather->freelist), 0);
 
 	put_pages_list(&gather->freelist);
 }
